@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd">
+    <spring:beans>
+        <context:property-placeholder location="classpath:endpoint.properties" order="1" />
+    </spring:beans>
+    <http:listener-config name="bill-xapi-httpListenerConfig" host="${config.host}" port="${config.port}" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="bill-xapi-config" raml="bill-xapi.raml" consoleEnabled="false" doc:name="Router"/>
+    <http:request-config name="papi-config" host="${config.papi.host}" port="${config.papi.port}" basePath="${config.papi.path}" doc:name="HTTP Request Configuration"/>
+    <http:request-config name="sapi-config" host="${config.sapi.host}" port="${config.sapi.port}" basePath="${config.sapi.path}" doc:name="HTTP Request Configuration"/>
+    <flow name="bill-xapi-main">
+        <http:listener config-ref="bill-xapi-httpListenerConfig" path="${config.path}" doc:name="HTTP"/>
+        <set-property propertyName="Content-Type" value="application/json" mimeType="application/json" doc:name="Request as JSON"/>
+        <apikit:router config-ref="bill-xapi-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="BillExceptions" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="bill-xapi-console">
+        <http:listener config-ref="bill-xapi-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="bill-xapi-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="get:/biller:bill-xapi-config">
+        <http:request config-ref="sapi-config" path="${config.sapi.path.biller}" method="GET" doc:name="Get Billers"/>
+        <copy-properties propertyName="*" doc:name="Property"  />
+    </flow>
+    <flow name="get:/bill/{subscriberAccountNumber}/{billerAccountNumber}:bill-xapi-config">
+        <http:request config-ref="sapi-config" path="${config.sapi.path.bill.inquiry}" method="GET" doc:name="Subscriber Inquiry">
+            <http:request-builder>
+                <http:uri-param paramName="subscriberAccountNumber" value="#[message.inboundProperties['http.uri.params']['subscriberAccountNumber']]"/>
+                <http:uri-param paramName="billerAccountNumber" value="#[message.inboundProperties['http.uri.params']['billerAccountNumber']]"/>
+            </http:request-builder>
+        </http:request>
+        <copy-properties doc:name="Property" propertyName="*"/>
+    </flow>
+    <flow name="post:/biller:bill-xapi-config">
+        <http:request config-ref="sapi-config" path="${config.sapi.path.biller}" method="POST" doc:name="Add Biller"/>
+        <copy-properties propertyName="*" doc:name="Property"/>
+    </flow>
+    <flow name="post:/payment/{subscriberAccountNumber}/{billerAccountNumber}:bill-xapi-config">
+        <http:request config-ref="papi-config" path="${config.papi.path.payment}" method="POST" doc:name="Bills Payment">
+            <http:request-builder>
+                <http:query-param paramName="amount" value="#[message.inboundProperties.'http.query.params'.amount]"/>
+                <http:uri-param paramName="subscriberAccountNumber" value="#[message.inboundProperties['http.uri.params']['subscriberAccountNumber']]"/>
+                <http:uri-param paramName="billerAccountNumber" value="#[message.inboundProperties['http.uri.params']['billerAccountNumber']]"/>
+            </http:request-builder>
+        </http:request>
+        <copy-properties propertyName="*" doc:name="Property"/>
+    </flow>
+    <flow name="post:/bill/{subscriberAccountNumber}/{billerAccountNumber}/add:bill-xapi-config">
+        <http:request config-ref="sapi-config" path="${config.sapi.path.bill.add}" method="POST" doc:name="Add Balance">
+            <http:request-builder>
+                <http:query-param paramName="amount" value="#[message.inboundProperties.'http.query.params'.amount]"/>
+                <http:uri-param paramName="subscriberAccountNumber" value="#[message.inboundProperties['http.uri.params']['subscriberAccountNumber']]"/>
+                <http:uri-param paramName="billerAccountNumber" value="#[message.inboundProperties['http.uri.params']['billerAccountNumber']]"/>
+            </http:request-builder>
+        </http:request>
+        <copy-properties doc:name="Property" propertyName="*"/>
+    </flow>
+    <apikit:mapping-exception-strategy name="bill-xapi-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+    <choice-exception-strategy name="BillExceptions">
+     <catch-exception-strategy when="#[message.inboundProperties.'http.status' == 404]" doc:name="404">
+         <copy-properties propertyName="*" doc:name="Copy Properties" />
+         <set-payload value="{  &quot;status_code&quot;: &quot;404&quot;,  &quot;status_message&quot;: &quot;Not found&quot; }" doc:name="Set Payload" />
+     </catch-exception-strategy>
+     <catch-exception-strategy when="#[message.inboundProperties.'http.status' == 500]" doc:name="500">
+         <copy-properties propertyName="*" doc:name="Copy Properties" />
+         <set-payload value="{  &quot;status_code&quot;: &quot;500&quot;,  &quot;status_message&quot;: &quot;Internal Server Error&quot; }" doc:name="Set Payload" />
+     </catch-exception-strategy>
+    </choice-exception-strategy>
+</mule>

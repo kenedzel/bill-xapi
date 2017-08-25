@@ -1,0 +1,67 @@
+#%RAML 0.8
+title: bill-experience
+version: 1
+
+/biller:
+  get:
+    description: Get all billers
+    body: 
+      application/json:
+  post:
+    description: Save new biller
+    body: 
+      application/json:
+        example: | 
+          {
+            "id": "59926c5b9bdc6231fce0c1b6",
+            "billerName": "waterCo",
+            "accountNumber": "123456",
+            "wallet": 1
+          }
+/bill:
+  /{subscriberAccountNumber}/{billerAccountNumber}:
+    get:
+      description: Subscriber inquiry.
+      responses: 
+        200:
+          body: 
+            application/json:
+        404:
+          body:
+            application/json:
+        500:
+          body: 
+            application/json:
+  /{subscriberAccountNumber}/{billerAccountNumber}/add:
+    post:
+      description: Add balance to bill.
+      queryParameters: 
+        amount:
+          type: number
+      responses: 
+        200:
+          body: 
+            application/json:
+        404:
+          body: 
+            application/json:
+        500:
+          body: 
+            application/json:
+/payment:
+  /{subscriberAccountNumber}/{billerAccountNumber}:
+    post:
+      description: Bills payment
+      queryParameters: 
+        amount:
+          type: number
+      responses: 
+        200:
+          body: 
+            application/json:
+        404:
+          body: 
+            application/json:
+        500:
+          body: 
+            application/json:
